@@ -399,7 +399,7 @@ export const launchTestSession = PerformanceTester.measureWrapper(PERFORMANCE_SD
             frameworkName: WDIO_NAMING_PREFIX + config.framework,
             frameworkVersion: bsConfig.bstackServiceVersion,
             sdkVersion: bsConfig.bstackServiceVersion,
-            language: 'ECMAScript',
+            language: 'webdriverio',
             testFramework: {
                 name: 'WebdriverIO',
                 version: bsConfig.bstackServiceVersion
