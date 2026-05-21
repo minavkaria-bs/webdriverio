@@ -257,23 +257,9 @@ class _AccessibilityHandler {
             .forEach((command) => {
                 const browser = this._browser as WebdriverIO.Browser
                 try {
-                    // For Element-class registrations we MUST defer to the `origFunction`
-                    // WDIO hands us — it's the Element's implementation. Reading the same
-                    // method off `browser` (e.g. `browser.waitUntil`) would resolve to the
-                    // Browser-class impl and, when re-applied on an Element ctx, send the
-                    // wrong protocol call. Browser-class registrations can still pre-bind
-                    // the original off `browser` (matches the historical behaviour pre-PR #3
-                    // for Browser commands like `pause`, `url`, etc.).
-                    const orig = command.class === 'Element'
-                        ? undefined
-                        : browser[command.name as keyof WebdriverIO.Browser]
+                    const orig = command.class === 'Element' ? undefined : browser[command.name as keyof WebdriverIO.Browser]
                     const prevImpl = orig ? orig.bind(browser) : undefined
-                    // Use a `function` (not arrow / not `.bind(this, …)`) so WDIO's invocation
-                    // context (`this` = the Element for Element-class commands, the Browser
-                    // otherwise) survives to be re-applied when invoking the original command.
-                    // Without this, Element-class commands like `click`/`addValue` lose their
-                    // element context and the protocol POST is sent with `selector=undefined`
-                    // (SDK-4117 — WDIO v9 + Accessibility).
+                    // SDK-4117: use `function` (not `.bind(this, …)`) so WDIO v9's invocation `this` survives.
                     // @ts-expect-error fix type
                     browser.overwriteCommand(command.name, function (this: unknown, origFunction: Function, ...args: unknown[]) {
                         return handler.commandWrapper(this, command, prevImpl, origFunction, ...args)
