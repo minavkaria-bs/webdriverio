@@ -257,8 +257,16 @@ class _AccessibilityHandler {
             .forEach((command) => {
                 const browser = this._browser as WebdriverIO.Browser
                 try {
-                    // element commands aren't on browser; use orig when present, otherwise rely on overwriteCommand's origFunction
-                    const orig = browser[command.name as keyof WebdriverIO.Browser]
+                    // For Element-class registrations we MUST defer to the `origFunction`
+                    // WDIO hands us — it's the Element's implementation. Reading the same
+                    // method off `browser` (e.g. `browser.waitUntil`) would resolve to the
+                    // Browser-class impl and, when re-applied on an Element ctx, send the
+                    // wrong protocol call. Browser-class registrations can still pre-bind
+                    // the original off `browser` (matches the historical behaviour pre-PR #3
+                    // for Browser commands like `pause`, `url`, etc.).
+                    const orig = command.class === 'Element'
+                        ? undefined
+                        : browser[command.name as keyof WebdriverIO.Browser]
                     const prevImpl = orig ? orig.bind(browser) : undefined
                     // Use a `function` (not arrow / not `.bind(this, …)`) so WDIO's invocation
                     // context (`this` = the Element for Element-class commands, the Browser

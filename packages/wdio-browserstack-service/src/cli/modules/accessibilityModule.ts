@@ -139,12 +139,27 @@ export default class AccessibilityModule extends BaseModule {
                 this.scriptInstance.commandsToWrap
                     .filter((command) => command.name && command.class)
                     .forEach((command) => {
-                        browser.overwriteCommand(
-                            // @ts-expect-error fix type
-                            command.name,
-                            this.commandWrapper.bind(this, command),
-                            command.class === 'Element'
-                        )
+                        // Per-command try/catch is REQUIRED here, mirroring the Direct
+                        // Flow (`accessibility-handler.ts`). WDIO's `overwriteCommand`
+                        // throws synchronously when a registered name isn't an existing
+                        // Browser command (`'overwriteCommand: no command to be
+                        // overwritten: <name>'` — see `wdio-utils/src/monad.ts`). The
+                        // backend `commandsToWrap` list contains entries that don't
+                        // exist on every WDIO target (e.g., `back` on App Automate).
+                        // Without this guard the forEach aborts mid-list, silently
+                        // dropping every command registered after the first bad one —
+                        // which is exactly how SDK-4117's `waitUntil` / `pause`
+                        // wrappers (at the tail of the list) were never installed.
+                        try {
+                            browser.overwriteCommand(
+                                // @ts-expect-error fix type
+                                command.name,
+                                this.commandWrapper.bind(this, command),
+                                command.class === 'Element'
+                            )
+                        } catch (overwriteError) {
+                            this.logger.debug(`Exception in overwrite command ${command.name} - ${overwriteError}`)
+                        }
                     })
             }
 
