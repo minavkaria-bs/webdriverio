@@ -39,7 +39,6 @@ interface A11yScanSessionMap {
 interface CommandInfo {
     name: string
     class?: string
-    [key: string]: unknown
 }
 
 interface TestExtensionData {
@@ -252,6 +251,7 @@ class _AccessibilityHandler {
             return
         }
 
+        const handler = this
         accessibilityScripts.commandsToWrap
             .filter((command) => command.name && command.class)
             .forEach((command) => {
@@ -260,8 +260,16 @@ class _AccessibilityHandler {
                     // element commands aren't on browser; use orig when present, otherwise rely on overwriteCommand's origFunction
                     const orig = browser[command.name as keyof WebdriverIO.Browser]
                     const prevImpl = orig ? orig.bind(browser) : undefined
+                    // Use a `function` (not arrow / not `.bind(this, …)`) so WDIO's invocation
+                    // context (`this` = the Element for Element-class commands, the Browser
+                    // otherwise) survives to be re-applied when invoking the original command.
+                    // Without this, Element-class commands like `click`/`addValue` lose their
+                    // element context and the protocol POST is sent with `selector=undefined`
+                    // (SDK-4117 — WDIO v9 + Accessibility).
                     // @ts-expect-error fix type
-                    browser.overwriteCommand(command.name, this.commandWrapper.bind(this, command, prevImpl), command.class === 'Element')
+                    browser.overwriteCommand(command.name, function (this: unknown, origFunction: Function, ...args: unknown[]) {
+                        return handler.commandWrapper(this, command, prevImpl, origFunction, ...args)
+                    }, command.class === 'Element')
                 } catch (error) {
                     BStackLogger.debug(`Exception in overwrite command ${command.name} - ${error}`)
                 }
@@ -423,7 +431,7 @@ class _AccessibilityHandler {
      * private methods
      */
 
-    private async commandWrapper (command: CommandInfo, prevImpl: Function, origFunction: Function, ...args: unknown[]) {
+    private async commandWrapper (ctx: unknown, command: CommandInfo, prevImpl: Function | undefined, origFunction: Function, ...args: unknown[]) {
         if (
             this._sessionId && AccessibilityHandler._a11yScanSessionMap[this._sessionId] &&
                 (
@@ -435,7 +443,7 @@ class _AccessibilityHandler {
             await performA11yScan(this.isAppAutomate, this._browser, true, true, command.name)
         }
         const impl = prevImpl || origFunction
-        return impl(...args)
+        return impl.apply(ctx, args)
     }
 
     private async sendTestStopEvent(browser: WebdriverIO.Browser, dataForExtension: TestExtensionData) {
