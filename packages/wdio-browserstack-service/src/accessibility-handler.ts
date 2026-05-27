@@ -261,7 +261,7 @@ class _AccessibilityHandler {
                     const prevImpl = orig ? orig.bind(browser) : undefined
                     // SDK-4117: use `function` (not `.bind(this, …)`) so WDIO v9's invocation `this` survives.
                     // @ts-expect-error fix type
-                    browser.overwriteCommand(command.name, function (this: unknown, origFunction: Function, ...args: unknown[]) {
+                    browser.overwriteCommand(command.name, function (this: WebdriverIO.Browser | WebdriverIO.Element, origFunction: Function, ...args: unknown[]) {
                         return handler.commandWrapper(this, command, prevImpl, origFunction, ...args)
                     }, command.class === 'Element')
                 } catch (error) {
@@ -425,7 +425,20 @@ class _AccessibilityHandler {
      * private methods
      */
 
-    private async commandWrapper (ctx: unknown, command: CommandInfo, prevImpl: Function | undefined, origFunction: Function, ...args: unknown[]) {
+    /**
+     * SDK-4117: WDIO v9 invokes Element-class wrappers as `element.click()`, so the wrapper needs
+     * `this === element` to forward the call (v9 dereferences `this.selector` / `this.using` to
+     * build the WebDriver POST element request). The registration site captures that `this` and
+     * passes it in as `ctx`.
+     *
+     * @param ctx           WDIO call-site receiver — `browser` for Browser-class commands, the
+     *                      Element instance for Element-class commands. Forwarded to `impl.apply(ctx, args)`.
+     * @param command       The `CommandInfo` this wrapper was registered for.
+     * @param prevImpl      Pre-bound Browser-class fallback (`browser[command.name].bind(browser)`);
+     *                      `undefined` for Element-class commands — `origFunction` is used instead.
+     * @param origFunction  WDIO's reference to the previous impl, passed in by `overwriteCommand`.
+     */
+    private async commandWrapper (ctx: WebdriverIO.Browser | WebdriverIO.Element, command: CommandInfo, prevImpl: Function | undefined, origFunction: Function, ...args: unknown[]) {
         if (
             this._sessionId && AccessibilityHandler._a11yScanSessionMap[this._sessionId] &&
                 (
