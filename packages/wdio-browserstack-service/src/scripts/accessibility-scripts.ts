@@ -14,7 +14,19 @@ interface Command {
     class: string
 }
 
-// SDK-4117: backend commandsToWrap omits `waitUntil`/`pause`; always wrap them.
+// SDK-4117: client-side supplement for commands the a11y backend's `commandsToWrap`
+// payload does not include today. Both commands represent a "page just settled" moment
+// where the next DOM state is what the user is waiting on — scanning right after gives
+// the scanner the post-wait DOM, not the pre-wait one.
+//   - `waitUntil` (Browser + Element): explicit predicate wait; the user is asking WDIO
+//     to block until a condition becomes true, so the DOM after the wait is the one we
+//     want to scan.
+//   - `pause` (Browser): a deliberate wall-clock wait the test author inserted because
+//     they expect async UI to settle in that window (animations, debounced renders, XHR
+//     callbacks). Scanning after pause captures that settled state. Browser-class only —
+//     `pause` is not an Element method.
+// TODO: migrate this to the backend `commandsToWrap` response and drop this constant once
+// the a11y backend exposes a v9-aware default set (tracked separately from SDK-4117).
 const SUPPLEMENTAL_COMMANDS: Command[] = [
     { name: 'waitUntil', class: 'Element' },
     { name: 'waitUntil', class: 'Browser' },

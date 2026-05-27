@@ -136,6 +136,7 @@ export default class AccessibilityModule extends BaseModule {
 
             // Wrap commands if accessibility scripts are available
             if (this.scriptInstance.commandsToWrap && this.scriptInstance.commandsToWrap.length > 0) {
+                const handler = this
                 this.scriptInstance.commandsToWrap
                     .filter((command) => command.name && command.class)
                     .forEach((command) => {
@@ -144,7 +145,12 @@ export default class AccessibilityModule extends BaseModule {
                             browser.overwriteCommand(
                                 // @ts-expect-error fix type
                                 command.name,
-                                this.commandWrapper.bind(this, command),
+                                // SDK-4117: use `function` (not `.bind(this, …)`) so WDIO v9's invocation `this` survives
+                                // and reaches commandWrapper as `ctx`. Without this, Element-class commands ship with
+                                // `selector=undefined strategy=undefined` because v9 calls the wrapper as `element.click()`.
+                                function (this: WebdriverIO.Browser | WebdriverIO.Element, origFunction: Function, ...args: unknown[]) {
+                                    return handler.commandWrapper(this, command, origFunction, ...args)
+                                },
                                 command.class === 'Element'
                             )
                         } catch (overwriteError) {
@@ -158,7 +164,14 @@ export default class AccessibilityModule extends BaseModule {
         }
     }
 
-    private async commandWrapper(command: Command, originFunction: Function, ...args: unknown[]) {
+    /**
+     * @param ctx           WDIO call-site receiver — `browser` for Browser-class commands, the Element instance
+     *                      for Element-class. SDK-4117: forwarded to `originFunction.apply(ctx, args)` so v9's
+     *                      Element commands can read `this.selector` / `this.using`.
+     * @param command       The Command this wrapper was registered for.
+     * @param originFunction WDIO's reference to the previous impl (passed in by `overwriteCommand`).
+     */
+    private async commandWrapper(ctx: WebdriverIO.Browser | WebdriverIO.Element, command: Command, originFunction: Function, ...args: unknown[]) {
         try {
             const autoInstance: AutomationFrameworkInstance = AutomationFramework.getTrackedInstance()
             const sessionId = AutomationFramework.getState(autoInstance, AutomationFrameworkConstants.KEY_FRAMEWORK_SESSION_ID)
@@ -180,15 +193,14 @@ export default class AccessibilityModule extends BaseModule {
                 }
             }
 
-            // Execute the original command
-            const result = await originFunction(...args)
-
-            return result
+            // Execute the original command on the WDIO call-site receiver so Element-class
+            // commands keep `this === element` (selector/using survive to the wire request).
+            return await originFunction.apply(ctx, args)
 
         } catch (error) {
             this.logger.error(`Error in commandWrapper for ${command.name}: ${error}`)
             // Still execute the original command even if accessibility scan fails
-            return await originFunction(...args)
+            return await originFunction.apply(ctx, args)
         }
     }
 
