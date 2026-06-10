@@ -39,7 +39,6 @@ interface A11yScanSessionMap {
 interface CommandInfo {
     name: string
     class?: string
-    [key: string]: unknown
 }
 
 interface TestExtensionData {
@@ -252,16 +251,19 @@ class _AccessibilityHandler {
             return
         }
 
+        const handler = this
         accessibilityScripts.commandsToWrap
             .filter((command) => command.name && command.class)
             .forEach((command) => {
                 const browser = this._browser as WebdriverIO.Browser
                 try {
-                    // element commands aren't on browser; use orig when present, otherwise rely on overwriteCommand's origFunction
-                    const orig = browser[command.name as keyof WebdriverIO.Browser]
+                    const orig = command.class === 'Element' ? undefined : browser[command.name as keyof WebdriverIO.Browser]
                     const prevImpl = orig ? orig.bind(browser) : undefined
+                    // Use `function` (not `.bind(this, …)`) so WDIO v9's invocation `this` survives.
                     // @ts-expect-error fix type
-                    browser.overwriteCommand(command.name, this.commandWrapper.bind(this, command, prevImpl), command.class === 'Element')
+                    browser.overwriteCommand(command.name, function (this: WebdriverIO.Browser | WebdriverIO.Element, origFunction: Function, ...args: unknown[]) {
+                        return handler.commandWrapper(this, command, prevImpl, origFunction, ...args)
+                    }, command.class === 'Element')
                 } catch (error) {
                     BStackLogger.debug(`Exception in overwrite command ${command.name} - ${error}`)
                 }
@@ -423,7 +425,20 @@ class _AccessibilityHandler {
      * private methods
      */
 
-    private async commandWrapper (command: CommandInfo, prevImpl: Function, origFunction: Function, ...args: unknown[]) {
+    /**
+     * WDIO v9 invokes Element-class wrappers as `element.click()`, so the wrapper needs
+     * `this === element` to forward the call (v9 dereferences `this.selector` / `this.using` to
+     * build the WebDriver POST element request). The registration site captures that `this` and
+     * passes it in as `ctx`.
+     *
+     * @param ctx           WDIO call-site receiver — `browser` for Browser-class commands, the
+     *                      Element instance for Element-class commands. Forwarded to `impl.apply(ctx, args)`.
+     * @param command       The `CommandInfo` this wrapper was registered for.
+     * @param prevImpl      Pre-bound Browser-class fallback (`browser[command.name].bind(browser)`);
+     *                      `undefined` for Element-class commands — `origFunction` is used instead.
+     * @param origFunction  WDIO's reference to the previous impl, passed in by `overwriteCommand`.
+     */
+    private async commandWrapper (ctx: WebdriverIO.Browser | WebdriverIO.Element, command: CommandInfo, prevImpl: Function | undefined, origFunction: Function, ...args: unknown[]) {
         if (
             this._sessionId && AccessibilityHandler._a11yScanSessionMap[this._sessionId] &&
                 (
@@ -435,7 +450,7 @@ class _AccessibilityHandler {
             await performA11yScan(this.isAppAutomate, this._browser, true, true, command.name)
         }
         const impl = prevImpl || origFunction
-        return impl(...args)
+        return impl.apply(ctx, args)
     }
 
     private async sendTestStopEvent(browser: WebdriverIO.Browser, dataForExtension: TestExtensionData) {

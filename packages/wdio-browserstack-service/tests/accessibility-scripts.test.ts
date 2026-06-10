@@ -33,7 +33,13 @@ describe('AccessibilityScripts', () => {
         expect(accessibilityScripts.getResults).to.equal('getResults')
         expect(accessibilityScripts.getResultsSummary).to.equal('getResultsSummary')
         expect(accessibilityScripts.saveTestResults).to.equal('saveResults')
-        expect(accessibilityScripts.commandsToWrap).to.deep.equal([{ command: 'command1' }, { command: 'command2' }])
+        expect(accessibilityScripts.commandsToWrap).to.deep.equal([
+            { command: 'command1' },
+            { command: 'command2' },
+            { name: 'waitUntil', class: 'Element' },
+            { name: 'waitUntil', class: 'Browser' },
+            { name: 'pause', class: 'Browser' },
+        ])
         expect(accessibilityScripts.ChromeExtension).to.deep.equal({ extension: ['extension1'] })
     })
 
@@ -55,7 +61,13 @@ describe('AccessibilityScripts', () => {
         expect(accessibilityScripts.getResults).to.equal('getResults')
         expect(accessibilityScripts.getResultsSummary).to.equal('getResultsSummary')
         expect(accessibilityScripts.saveTestResults).to.equal('saveResults')
-        expect(accessibilityScripts.commandsToWrap).to.deep.equal([{ command: 'command1' }, { command: 'command2' }])
+        expect(accessibilityScripts.commandsToWrap).to.deep.equal([
+            { command: 'command1' },
+            { command: 'command2' },
+            { name: 'waitUntil', class: 'Element' },
+            { name: 'waitUntil', class: 'Browser' },
+            { name: 'pause', class: 'Browser' },
+        ])
         expect(accessibilityScripts.ChromeExtension).to.deep.equal({ extension: ['extension1'] })
     })
 

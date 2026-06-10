@@ -14,6 +14,20 @@ interface Command {
     class: string
 }
 
+// Commands the accessibility backend's `commandsToWrap` payload does not include today,
+// supplemented client-side so they still trigger an a11y scan. Both mark a "page settled"
+// moment where the post-command DOM is what the user is waiting on:
+//   - `waitUntil` (Browser + Element): an explicit predicate wait — scan once the awaited
+//     condition becomes true.
+//   - `pause` (Browser): a deliberate wall-clock wait inserted to let async UI settle
+//     (animations, debounced renders, in-flight XHR); scanning after captures that state.
+//     Browser-class only — `pause` is not an Element method.
+const SUPPLEMENTAL_COMMANDS: Command[] = [
+    { name: 'waitUntil', class: 'Element' },
+    { name: 'waitUntil', class: 'Browser' },
+    { name: 'pause', class: 'Browser' },
+]
+
 class AccessibilityScripts {
     private static instance: AccessibilityScripts | null = null
 
@@ -86,7 +100,9 @@ class AccessibilityScripts {
             this.saveTestResults = data.scripts.saveResults
         }
         if (data.commands && data.commands.length) {
-            this.commandsToWrap = data.commands
+            const cmds = data.commands as unknown as Command[]
+            const seen = new Set(cmds.map((c) => `${c.name}::${c.class}`))
+            this.commandsToWrap = [...cmds, ...SUPPLEMENTAL_COMMANDS.filter((s) => !seen.has(`${s.name}::${s.class}`))]
         }
         if (data.nonBStackInfraA11yChromeOptions){
             this.ChromeExtension = data.nonBStackInfraA11yChromeOptions
